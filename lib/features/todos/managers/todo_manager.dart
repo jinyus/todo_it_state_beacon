@@ -54,6 +54,8 @@ class TodoManager with BeaconController {
 
       await _storageService.saveTodo(newTodo.toDTO());
 
+      // no need to refetch from source, just add to current list
+      // since it was successfully saved
       return [newTodo, ...todoList];
     });
   }
