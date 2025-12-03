@@ -1,5 +1,7 @@
-import 'package:flutter/foundation.dart';
-import 'package:command_it/command_it.dart';
+// ignore_for_file: prefer_collection_literals
+
+import 'dart:collection';
+
 import 'package:state_beacon/state_beacon.dart';
 import 'package:uuid/uuid.dart';
 
@@ -9,8 +11,7 @@ import '../../../services/storage/hive_storage_service.dart';
 /// Manager for todo business logic
 ///
 /// This class contains all the business logic for managing todos.
-/// It uses Commands for state-modifying operations and ValueNotifiers
-/// for reactive data.
+/// It uses state_beacon for reactive state management
 class TodoManager with BeaconController {
   final HiveStorageService _storageService;
   final Uuid _uuid = const Uuid();
@@ -24,16 +25,25 @@ class TodoManager with BeaconController {
 
   late final todos = B.future(_loadTodos, manualStart: true);
 
-  List<Todo> get todoList => todos.lastData ?? [];
+  LinkedHashMap<String, Todo> get todoMap =>
+      todos.lastData ?? LinkedHashMap<String, Todo>();
 
-  Future<List<Todo>> _loadTodos() async {
+  LinkedHashMap<String, Todo> toMap(Iterable<Todo> todos) {
+    return LinkedHashMap<String, Todo>.fromIterable(
+      todos,
+      key: (todo) => todo.id,
+      value: (todo) => todo,
+    );
+  }
+
+  Future<LinkedHashMap<String, Todo>> _loadTodos() async {
     final dtos = await _storageService.getAllTodos();
     final loadedTodos = dtos.map((dto) => Todo.fromDTO(dto)).toList();
 
     // Sort by created date (newest first)
     loadedTodos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    return loadedTodos;
+    return toMap(loadedTodos);
   }
 
   /// Add a new todo
@@ -54,7 +64,7 @@ class TodoManager with BeaconController {
 
       await _storageService.saveTodo(newTodo.toDTO());
 
-      return [newTodo, ...todoList];
+      return toMap([newTodo, ...todoMap.values]);
     });
   }
 
@@ -68,18 +78,9 @@ class TodoManager with BeaconController {
 
       await _storageService.updateTodo(updatedTodo.toDTO());
 
-      final index = todoList.indexWhere(
-        (existing) => existing.id == updatedTodo.id,
-      );
+      todoMap[todo.id] = updatedTodo;
 
-      if (index == -1) {
-        throw NotFoundException('Todo not found');
-      }
-
-      final updatedTodos = List<Todo>.from(todoList);
-      updatedTodos[index] = updatedTodo;
-
-      return updatedTodos;
+      return LinkedHashMap<String, Todo>.from(todoMap);
     });
   }
 
@@ -87,9 +88,9 @@ class TodoManager with BeaconController {
     await todos.updateWith(() async {
       await _storageService.deleteTodo(id);
 
-      final updatedTodos = todoList.where((todo) => todo.id != id).toList();
+      todoMap.remove(id);
 
-      return updatedTodos;
+      return LinkedHashMap<String, Todo>.from(todoMap);
     });
 
     // Clear selected todo if it was deleted
@@ -100,13 +101,11 @@ class TodoManager with BeaconController {
 
   Future<void> toggleTodo(String id) async {
     await todos.updateWith(() async {
-      final index = todoList.indexWhere((t) => t.id == id);
-
-      if (index == -1) {
+      final todo = todoMap[id];
+      if (todo == null) {
         throw NotFoundException('Todo not found');
       }
 
-      final todo = todoList[index];
       final updatedTodo = todo.copyWith(
         isCompleted: !todo.isCompleted,
         updatedAt: DateTime.now(),
@@ -114,29 +113,28 @@ class TodoManager with BeaconController {
 
       await _storageService.updateTodo(updatedTodo.toDTO());
 
-      final updatedTodos = List<Todo>.from(todoList);
-      updatedTodos[index] = updatedTodo;
+      todoMap[todo.id] = updatedTodo;
 
-      return updatedTodos;
+      return LinkedHashMap<String, Todo>.from(todoMap);
     });
   }
 
   Future<void> clearCompleted() async {
     await todos.updateWith(() async {
-      final completedTodos = todoList.where((t) => t.isCompleted);
+      final completedTodos = todoMap.values.where((t) => t.isCompleted);
 
       for (final todo in completedTodos) {
         await _storageService.deleteTodo(todo.id);
       }
 
-      final remainingTodos = todoList.where((t) => !t.isCompleted).toList();
+      final updatedTodos = todoMap.values.where((t) => !t.isCompleted);
 
-      return remainingTodos;
+      return toMap(updatedTodos);
     });
   }
 
   late final filteredTodos = B.derived(() {
-    final currentTodos = todos.value.lastData ?? [];
+    final currentTodos = todos.value.lastData?.values.toList() ?? [];
     return switch (currentFilter.value) {
       TodoFilter.all => currentTodos,
       TodoFilter.active => currentTodos.where((t) => !t.isCompleted).toList(),
@@ -145,12 +143,12 @@ class TodoManager with BeaconController {
   });
 
   late final activeCount = B.derived(() {
-    final currentTodos = todos.value.lastData ?? [];
+    final currentTodos = todos.value.lastData?.values.toList() ?? [];
     return currentTodos.where((t) => !t.isCompleted).length;
   });
 
   late final completedCount = B.derived(() {
-    final currentTodos = todos.value.lastData ?? [];
+    final currentTodos = todos.value.lastData?.values.toList() ?? [];
     return currentTodos.where((t) => t.isCompleted).length;
   });
 
