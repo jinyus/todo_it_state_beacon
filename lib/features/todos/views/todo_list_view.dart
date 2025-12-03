@@ -23,6 +23,7 @@ class TodoListView extends WatchingWidget {
     final currentFilter = watch(manager.currentFilter);
     final isLoading = watch(manager.loadTodosCommand.isExecuting);
     final activeTodoCount = manager.activeTodoCount;
+    final completedTodoCount = manager.completedTodoCount;
     final hasCompletedTodos = manager.hasCompletedTodos;
 
     // Register error handler for commands
@@ -111,7 +112,7 @@ class TodoListView extends WatchingWidget {
                 Expanded(
                   child: _FilterChip(
                     label: 'All',
-                    count: filteredTodos.length,
+                    count: activeTodoCount + completedTodoCount,
                     isSelected: currentFilter.value == TodoFilter.all,
                     onSelected: () => manager.setFilter(TodoFilter.all),
                   ),
@@ -127,9 +128,7 @@ class TodoListView extends WatchingWidget {
                 Expanded(
                   child: _FilterChip(
                     label: 'Completed',
-                    count: filteredTodos
-                        .where((t) => t.isCompleted)
-                        .length,
+                    count: completedTodoCount,
                     isSelected: currentFilter.value == TodoFilter.completed,
                     onSelected: () => manager.setFilter(TodoFilter.completed),
                   ),
@@ -143,27 +142,27 @@ class TodoListView extends WatchingWidget {
             child: isLoading.value
                 ? const Center(child: CircularProgressIndicator())
                 : filteredTodos.isEmpty
-                    ? _buildEmptyState(context, currentFilter.value)
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          manager.loadTodosCommand();
-                          // Wait a bit for command to complete
-                          await Future.delayed(const Duration(milliseconds: 500));
-                        },
-                        child: ListView.builder(
-                          itemCount: filteredTodos.length,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemBuilder: (context, index) {
-                            final todo = filteredTodos[index];
-                            return TodoItem(
-                              todo: todo,
-                              onTap: () => _navigateToEditTodo(context, todo),
-                              onToggle: () => manager.toggleTodoCommand(todo.id),
+                ? _buildEmptyState(context, currentFilter.value)
+                : RefreshIndicator(
+                    onRefresh: () async {
+                      manager.loadTodosCommand();
+                      // Wait a bit for command to complete
+                      await Future.delayed(const Duration(milliseconds: 500));
+                    },
+                    child: ListView.builder(
+                      itemCount: filteredTodos.length,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemBuilder: (context, index) {
+                        final todo = filteredTodos[index];
+                        return TodoItem(
+                          todo: todo,
+                          onTap: () => _navigateToEditTodo(context, todo),
+                          onToggle: () => manager.toggleTodoCommand(todo.id),
                               onDelete: () => _confirmDelete(context, manager, todo),
-                            );
-                          },
-                        ),
-                      ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),
@@ -254,8 +253,8 @@ class TodoListView extends WatchingWidget {
                     onPressed: () {
                       // Undo functionality (add back the todo)
                       manager.addTodoCommand(TodoInput(
-                        title: todo.title,
-                        description: todo.description,
+                          title: todo.title,
+                          description: todo.description,
                       ));
                     },
                   ),
