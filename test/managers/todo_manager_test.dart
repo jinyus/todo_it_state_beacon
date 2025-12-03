@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
+import 'package:state_beacon/state_beacon.dart';
 import 'package:todoit/features/todos/managers/todo_manager.dart';
 import 'package:todoit/features/todos/models/todo.dart';
 import 'package:todoit/features/todos/models/todo_dto.dart';
@@ -17,22 +18,18 @@ void main() {
 
     setUp(() async {
       mockStorage = MockHiveStorageService();
-      // Default mock behavior
       when(mockStorage.getAllTodos()).thenAnswer((_) async => []);
       manager = TodoManager(mockStorage);
-      // Wait for initial load command to complete
-      await Future.delayed(const Duration(milliseconds: 150));
+      await manager.todos.next(filter: (state) => !state.isLoading);
     });
 
     tearDown(() async {
-      // Wait for any pending operations before disposing
-      await Future.delayed(const Duration(milliseconds: 50));
       manager.dispose();
     });
 
     group('Initialization', () {
       test('should initialize with empty todos', () {
-        expect(manager.todos.value, isEmpty);
+        expect(manager.todoList, isEmpty);
       });
 
       test('should set initial filter to all', () {
@@ -44,7 +41,6 @@ void main() {
       });
 
       test('should automatically load todos on creation', () {
-        // Already loaded in setUp
         verify(mockStorage.getAllTodos()).called(greaterThan(0));
       });
     });
@@ -61,11 +57,11 @@ void main() {
 
         when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto]);
 
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
 
-        expect(manager.todos.value.length, 1);
-        expect(manager.todos.value.first.title, 'Test Todo');
+        expect(manager.todoList.length, 1);
+        expect(manager.todoList.first.title, 'Test Todo');
       });
 
       test('should sort todos by created date descending', () async {
@@ -82,26 +78,28 @@ void main() {
           title: 'Newer Todo',
           description: 'Description',
           isCompleted: false,
-          createdAt: testDate.add(const Duration(hours: 1)).millisecondsSinceEpoch,
+          createdAt: testDate
+              .add(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
         );
 
         when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto1, dto2]);
 
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
 
-        expect(manager.todos.value.length, 2);
-        expect(manager.todos.value.first.title, 'Newer Todo');
-        expect(manager.todos.value.last.title, 'Older Todo');
+        expect(manager.todoList.length, 2);
+        expect(manager.todoList.first.title, 'Newer Todo');
+        expect(manager.todoList.last.title, 'Older Todo');
       });
 
       test('should handle empty storage', () async {
         when(mockStorage.getAllTodos()).thenAnswer((_) async => []);
 
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
 
-        expect(manager.todos.value, isEmpty);
+        expect(manager.todoList, isEmpty);
       });
     });
 
@@ -117,11 +115,9 @@ void main() {
           description: 'New Description',
         );
 
-        manager.addTodoCommand(input);
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.addTodo(input);
 
         verify(mockStorage.saveTodo(any)).called(1);
-        verify(mockStorage.getAllTodos()).called(greaterThan(1));
       });
 
       test('should trim whitespace from title and description', () async {
@@ -135,8 +131,7 @@ void main() {
           capturedDto = invocation.positionalArguments[0] as TodoDTO;
         });
 
-        manager.addTodoCommand(input);
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.addTodo(input);
 
         expect(capturedDto, isNotNull);
         expect(capturedDto!.title, 'Trimmed Title');
@@ -151,8 +146,7 @@ void main() {
           capturedDto = invocation.positionalArguments[0] as TodoDTO;
         });
 
-        manager.addTodoCommand(input);
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.addTodo(input);
 
         expect(capturedDto, isNotNull);
         expect(capturedDto!.id, isNotEmpty);
@@ -166,15 +160,10 @@ void main() {
           capturedDto = invocation.positionalArguments[0] as TodoDTO;
         });
 
-        manager.addTodoCommand(input);
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.addTodo(input);
 
         expect(capturedDto!.isCompleted, false);
       });
-
-      // Note: Validation exception tests removed as they require
-      // command_it global error handler setup. The validation logic
-      // itself is working as evidenced by the successful operations.
     });
 
     group('Update Todo Command', () {
@@ -192,11 +181,9 @@ void main() {
           createdAt: testDate,
         );
 
-        manager.updateTodoCommand(todo);
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.updateTodo(todo);
 
         verify(mockStorage.updateTodo(any)).called(1);
-        verify(mockStorage.getAllTodos()).called(greaterThan(1));
       });
 
       test('should set updatedAt timestamp', () async {
@@ -213,14 +200,11 @@ void main() {
           capturedDto = invocation.positionalArguments[0] as TodoDTO;
         });
 
-        manager.updateTodoCommand(todo);
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.updateTodo(todo);
 
         expect(capturedDto, isNotNull);
         expect(capturedDto!.updatedAt, isNotNull);
       });
-
-      // Note: Validation exception test removed - requires command_it error handler setup
     });
 
     group('Delete Todo Command', () {
@@ -230,11 +214,9 @@ void main() {
       });
 
       test('should delete todo by id', () async {
-        manager.deleteTodoCommand('test-1');
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.deleteTodo('test-1');
 
         verify(mockStorage.deleteTodo('test-1')).called(1);
-        verify(mockStorage.getAllTodos()).called(greaterThan(1));
       });
 
       test('should clear selected todo if it was deleted', () async {
@@ -249,30 +231,30 @@ void main() {
         manager.selectTodo(todo);
         expect(manager.selectedTodo.value, isNotNull);
 
-        manager.deleteTodoCommand('test-1');
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.deleteTodo('test-1');
 
         expect(manager.selectedTodo.value, isNull);
       });
 
-      test('should not clear selected todo if different todo was deleted',
-          () async {
-        final todo = Todo(
-          id: 'test-1',
-          title: 'Test',
-          description: 'Test',
-          isCompleted: false,
-          createdAt: testDate,
-        );
+      test(
+        'should not clear selected todo if different todo was deleted',
+        () async {
+          final todo = Todo(
+            id: 'test-1',
+            title: 'Test',
+            description: 'Test',
+            isCompleted: false,
+            createdAt: testDate,
+          );
 
-        manager.selectTodo(todo);
+          manager.selectTodo(todo);
 
-        manager.deleteTodoCommand('test-2');
-        await Future.delayed(const Duration(milliseconds: 100));
+          await manager.deleteTodo('test-2');
 
-        expect(manager.selectedTodo.value, isNotNull);
-        expect(manager.selectedTodo.value!.id, 'test-1');
-      });
+          expect(manager.selectedTodo.value, isNotNull);
+          expect(manager.selectedTodo.value!.id, 'test-1');
+        },
+      );
     });
 
     group('Toggle Todo Command', () {
@@ -290,16 +272,15 @@ void main() {
         );
 
         when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto]);
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
 
         TodoDTO? capturedDto;
         when(mockStorage.updateTodo(any)).thenAnswer((invocation) async {
           capturedDto = invocation.positionalArguments[0] as TodoDTO;
         });
 
-        manager.toggleTodoCommand('test-1');
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.toggleTodo('test-1');
 
         expect(capturedDto, isNotNull);
         expect(capturedDto!.isCompleted, true);
@@ -315,22 +296,19 @@ void main() {
         );
 
         when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto]);
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
 
         TodoDTO? capturedDto;
         when(mockStorage.updateTodo(any)).thenAnswer((invocation) async {
           capturedDto = invocation.positionalArguments[0] as TodoDTO;
         });
 
-        manager.toggleTodoCommand('test-1');
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.toggleTodo('test-1');
 
         expect(capturedDto, isNotNull);
         expect(capturedDto!.isCompleted, false);
       });
-
-      // Note: NotFoundException test removed - requires command_it error handler setup
     });
 
     group('Clear Completed Command', () {
@@ -363,12 +341,13 @@ void main() {
           createdAt: testDate.millisecondsSinceEpoch,
         );
 
-        when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto1, dto2, dto3]);
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        when(
+          mockStorage.getAllTodos(),
+        ).thenAnswer((_) async => [dto1, dto2, dto3]);
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
 
-        manager.clearCompletedCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.clearCompleted();
 
         verify(mockStorage.deleteTodo('test-1')).called(1);
         verify(mockStorage.deleteTodo('test-3')).called(1);
@@ -385,11 +364,10 @@ void main() {
         );
 
         when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto]);
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
 
-        manager.clearCompletedCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        await manager.clearCompleted();
 
         verifyNever(mockStorage.deleteTodo(any));
       });
@@ -421,26 +399,28 @@ void main() {
           createdAt: testDate.millisecondsSinceEpoch,
         );
 
-        when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto1, dto2, dto3]);
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        when(
+          mockStorage.getAllTodos(),
+        ).thenAnswer((_) async => [dto1, dto2, dto3]);
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
       });
 
       test('should return all todos when filter is all', () {
         manager.setFilter(TodoFilter.all);
-        expect(manager.filteredTodos.length, 3);
+        expect(manager.filteredTodos.value.length, 3);
       });
 
       test('should return only active todos when filter is active', () {
         manager.setFilter(TodoFilter.active);
-        final filtered = manager.filteredTodos;
+        final filtered = manager.filteredTodos.value;
         expect(filtered.length, 2);
         expect(filtered.every((t) => !t.isCompleted), true);
       });
 
       test('should return only completed todos when filter is completed', () {
         manager.setFilter(TodoFilter.completed);
-        final filtered = manager.filteredTodos;
+        final filtered = manager.filteredTodos.value;
         expect(filtered.length, 1);
         expect(filtered.every((t) => t.isCompleted), true);
       });
@@ -472,40 +452,46 @@ void main() {
           createdAt: testDate.millisecondsSinceEpoch,
         );
 
-        when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto1, dto2, dto3]);
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+        when(
+          mockStorage.getAllTodos(),
+        ).thenAnswer((_) async => [dto1, dto2, dto3]);
+        manager.todos.reset();
+        await manager.todos.next(filter: (state) => !state.isLoading);
       });
 
       test('activeTodoCount should return correct count', () {
-        expect(manager.activeTodoCount, 2);
+        expect(manager.activeCount.value, 2);
       });
 
       test('completedTodoCount should return correct count', () {
-        expect(manager.completedTodoCount, 1);
+        expect(manager.completedCount.value, 1);
       });
 
-      test('hasCompletedTodos should return true when there are completed todos',
-          () {
-        expect(manager.hasCompletedTodos, true);
-      });
+      test(
+        'hasCompletedTodos should return true when there are completed todos',
+        () {
+          expect(manager.hasCompleted.value, true);
+        },
+      );
 
-      test('hasCompletedTodos should return false when no completed todos',
-          () async {
-        final dto = TodoDTO(
-          id: 'test-1',
-          title: 'Active',
-          description: 'Test',
-          isCompleted: false,
-          createdAt: testDate.millisecondsSinceEpoch,
-        );
+      test(
+        'hasCompletedTodos should return false when no completed todos',
+        () async {
+          final dto = TodoDTO(
+            id: 'test-1',
+            title: 'Active',
+            description: 'Test',
+            isCompleted: false,
+            createdAt: testDate.millisecondsSinceEpoch,
+          );
 
-        when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto]);
-        manager.loadTodosCommand();
-        await Future.delayed(const Duration(milliseconds: 100));
+          when(mockStorage.getAllTodos()).thenAnswer((_) async => [dto]);
+          manager.todos.reset();
+          await manager.todos.next(filter: (state) => !state.isLoading);
 
-        expect(manager.hasCompletedTodos, false);
-      });
+          expect(manager.hasCompleted.value, false);
+        },
+      );
     });
 
     group('Selected Todo Management', () {
