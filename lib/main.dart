@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:state_beacon/state_beacon.dart';
+import 'package:todoit/features/todos/managers/todo_manager.dart';
 import 'package:watch_it/watch_it.dart';
 
 import 'features/todos/models/todo_dto.dart';
@@ -33,6 +35,20 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final manager = di<TodoManager>();
+
+    manager.todos.observe(context, (prev, next) {
+      final theme = Theme.of(context);
+      final colorScheme = theme.colorScheme;
+      if (next case AsyncError state) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${state.error}'),
+            backgroundColor: colorScheme.error,
+          ),
+        );
+      }
+    });
     return MaterialApp(
       title: 'TodoIt',
       debugShowCheckedModeBanner: false,
@@ -59,4 +75,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:state_beacon/state_beacon.dart';
 import 'package:watch_it/watch_it.dart';
 
 import '../managers/todo_manager.dart';
@@ -19,183 +20,63 @@ class TodoListView extends WatchingWidget {
     final colorScheme = theme.colorScheme;
 
     // Watch reactive state
-    final filteredTodos = manager.filteredTodos;
-    final currentFilter = watch(manager.currentFilter);
-    final isLoading = watch(manager.loadTodosCommand.isExecuting);
-    final activeTodoCount = manager.activeTodoCount;
-    final hasCompletedTodos = manager.hasCompletedTodos;
-
-    // Register error handler for commands
-    registerHandler(
-      select: (TodoManager m) => m.deleteTodoCommand.errors,
-      handler: (context, error, cancel) {
-        if (error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error deleting todo: ${error.error}'),
-              backgroundColor: colorScheme.error,
-            ),
-          );
-        }
-      },
-    );
-
-    registerHandler(
-      select: (TodoManager m) => m.toggleTodoCommand.errors,
-      handler: (context, error, cancel) {
-        if (error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error updating todo: ${error.error}'),
-              backgroundColor: colorScheme.error,
-            ),
-          );
-        }
-      },
-    );
+    final filteredTodos = manager.filteredTodos.watch(context);
+    final isLoading = manager.todos.watch(context).isLoading;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('TodoIt'),
         backgroundColor: colorScheme.primaryContainer,
         foregroundColor: colorScheme.onPrimaryContainer,
-        actions: [
-          if (hasCompletedTodos)
-            IconButton(
-              icon: const Icon(Icons.delete_sweep),
-              tooltip: 'Clear completed',
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Clear completed todos?'),
-                    content: const Text(
-                      'This will permanently delete all completed todos.',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      FilledButton(
-                        onPressed: () {
-                          manager.clearCompletedCommand();
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Clear'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: () {
-              // Navigate to settings (Phase 1B - Step 12)
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Settings coming soon!')),
-              );
-            },
-          ),
-        ],
+        actions: [ClearCompletedButton(), SettingsButton()],
       ),
       body: Column(
         children: [
           // Filter tabs
-          Container(
-            color: colorScheme.surfaceContainerHighest,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _FilterChip(
-                    label: 'All',
-                    count: filteredTodos.length,
-                    isSelected: currentFilter.value == TodoFilter.all,
-                    onSelected: () => manager.setFilter(TodoFilter.all),
-                  ),
-                ),
-                Expanded(
-                  child: _FilterChip(
-                    label: 'Active',
-                    count: activeTodoCount,
-                    isSelected: currentFilter.value == TodoFilter.active,
-                    onSelected: () => manager.setFilter(TodoFilter.active),
-                  ),
-                ),
-                Expanded(
-                  child: _FilterChip(
-                    label: 'Completed',
-                    count: filteredTodos
-                        .where((t) => t.isCompleted)
-                        .length,
-                    isSelected: currentFilter.value == TodoFilter.completed,
-                    onSelected: () => manager.setFilter(TodoFilter.completed),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          FilterTabs(),
 
-          // Todo list
           Expanded(
-            child: isLoading.value
-                ? const Center(child: CircularProgressIndicator())
-                : filteredTodos.isEmpty
-                    ? _buildEmptyState(context, currentFilter.value)
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          manager.loadTodosCommand();
-                          // Wait a bit for command to complete
-                          await Future.delayed(const Duration(milliseconds: 500));
-                        },
-                        child: ListView.builder(
-                          itemCount: filteredTodos.length,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemBuilder: (context, index) {
-                            final todo = filteredTodos[index];
-                            return TodoItem(
-                              todo: todo,
-                              onTap: () => _navigateToEditTodo(context, todo),
-                              onToggle: () => manager.toggleTodoCommand(todo.id),
-                              onDelete: () => _confirmDelete(context, manager, todo),
-                            );
-                          },
-                        ),
-                      ),
+            child: switch ((isLoading, filteredTodos.isEmpty)) {
+              (true, _) => const Center(child: CircularProgressIndicator()),
+              (_, true) => const EmptyState(),
+              _ => const TodoList(),
+            },
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _navigateToAddTodo(context),
+        onPressed: () => Navigator.pushNamed(context, '/add'),
         icon: const Icon(Icons.add),
         label: const Text('Add Todo'),
       ),
     );
   }
+}
 
-  Widget _buildEmptyState(BuildContext context, TodoFilter filter) {
+class EmptyState extends StatelessWidget {
+  const EmptyState({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final manager = di<TodoManager>();
+    final filter = manager.currentFilter.watch(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    String message;
-    IconData icon;
-
-    switch (filter) {
-      case TodoFilter.all:
-        message = 'No todos yet.\nTap the button below to create one!';
-        icon = Icons.inbox_outlined;
-        break;
-      case TodoFilter.active:
-        message = 'No active todos.\nAll done!';
-        icon = Icons.check_circle_outline;
-        break;
-      case TodoFilter.completed:
-        message = 'No completed todos yet.\nKeep working!';
-        icon = Icons.pending_actions_outlined;
-        break;
-    }
+    final (message, icon) = switch (filter) {
+      TodoFilter.all => (
+        'No todos yet.\nTap the button below to create one!',
+        Icons.inbox_outlined,
+      ),
+      TodoFilter.active => (
+        'No active todos.\nAll done!',
+        Icons.check_circle_outline,
+      ),
+      TodoFilter.completed => (
+        'No completed todos yet.\nKeep working!',
+        Icons.pending_actions_outlined,
+      ),
+    };
 
     return Center(
       child: Padding(
@@ -221,9 +102,35 @@ class TodoListView extends WatchingWidget {
       ),
     );
   }
+}
 
-  void _navigateToAddTodo(BuildContext context) {
-    Navigator.pushNamed(context, '/add');
+class TodoList extends StatelessWidget {
+  const TodoList({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final manager = di<TodoManager>();
+    final filteredTodos = manager.filteredTodos.watch(context);
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        manager.todos.reset();
+        await manager.todos.next();
+      },
+      child: ListView.builder(
+        itemCount: filteredTodos.length,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemBuilder: (context, index) {
+          final todo = filteredTodos[index];
+          return TodoItem(
+            todo: todo,
+            onTap: () => _navigateToEditTodo(context, todo),
+            onToggle: () => manager.toggleTodo(todo.id),
+            onDelete: () => _confirmDelete(context, manager, todo),
+          );
+        },
+      ),
+    );
   }
 
   void _navigateToEditTodo(BuildContext context, Todo todo) {
@@ -244,7 +151,7 @@ class TodoListView extends WatchingWidget {
           ),
           FilledButton(
             onPressed: () {
-              manager.deleteTodoCommand(todo.id);
+              manager.deleteTodo(todo.id);
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -253,10 +160,12 @@ class TodoListView extends WatchingWidget {
                     label: 'Undo',
                     onPressed: () {
                       // Undo functionality (add back the todo)
-                      manager.addTodoCommand(TodoInput(
-                        title: todo.title,
-                        description: todo.description,
-                      ));
+                      manager.addTodo(
+                        TodoInput(
+                          title: todo.title,
+                          description: todo.description,
+                        ),
+                      );
                     },
                   ),
                 ),
@@ -266,6 +175,103 @@ class TodoListView extends WatchingWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class FilterTabs extends StatelessWidget {
+  const FilterTabs({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final manager = di<TodoManager>();
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // Watch reactive state
+    final currentFilter = manager.currentFilter.watch(context);
+    final activeTodoCount = manager.activeCount.watch(context);
+    final completeCount = manager.completedCount.watch(context);
+
+    return Container(
+      color: colorScheme.surfaceContainerHighest,
+      child: Row(
+        children: TodoFilter.values.map((filter) {
+          return Expanded(
+            child: _FilterChip(
+              label: filter.name.toUpperCase(),
+              count: switch (filter) {
+                TodoFilter.all => activeTodoCount + completeCount,
+                TodoFilter.active => activeTodoCount,
+                TodoFilter.completed => completeCount,
+              },
+              isSelected: currentFilter == filter,
+              onSelected: () => manager.setFilter(filter),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class SettingsButton extends StatelessWidget {
+  const SettingsButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.settings_outlined),
+      tooltip: 'Settings',
+      onPressed: () {
+        // Navigate to settings (Phase 1B - Step 12)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Settings coming soon!')));
+      },
+    );
+  }
+}
+
+class ClearCompletedButton extends StatelessWidget {
+  const ClearCompletedButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final manager = di<TodoManager>();
+    final hasCompletedTodos = manager.hasCompleted.watch(context);
+
+    if (!hasCompletedTodos) {
+      return const SizedBox.shrink();
+    }
+
+    return IconButton(
+      icon: const Icon(Icons.delete_sweep),
+      tooltip: 'Clear completed',
+      onPressed: () {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Clear completed todos?'),
+            content: const Text(
+              'This will permanently delete all completed todos.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  manager.clearCompleted();
+                  Navigator.pop(context);
+                },
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

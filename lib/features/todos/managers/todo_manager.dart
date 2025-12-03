@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:command_it/command_it.dart';
+import 'package:state_beacon/state_beacon.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/todo.dart';
@@ -10,69 +11,21 @@ import '../../../services/storage/hive_storage_service.dart';
 /// This class contains all the business logic for managing todos.
 /// It uses Commands for state-modifying operations and ValueNotifiers
 /// for reactive data.
-class TodoManager {
+class TodoManager with BeaconController {
   final HiveStorageService _storageService;
   final Uuid _uuid = const Uuid();
 
-  // Reactive state
-  final ValueNotifier<List<Todo>> todos = ValueNotifier([]);
-  final ValueNotifier<Todo?> selectedTodo = ValueNotifier(null);
-  final ValueNotifier<TodoFilter> currentFilter = ValueNotifier(TodoFilter.all);
-
-  // Commands
-  late final Command<void, List<Todo>> loadTodosCommand;
-  late final Command<TodoInput, void> addTodoCommand;
-  late final Command<Todo, void> updateTodoCommand;
-  late final Command<String, void> deleteTodoCommand;
-  late final Command<String, void> toggleTodoCommand;
-  late final Command<void, void> clearCompletedCommand;
+  late final selectedTodo = B.writable<Todo?>(null);
+  late final currentFilter = B.writable<TodoFilter>(TodoFilter.all);
 
   TodoManager(this._storageService) {
-    _initializeCommands();
+    todos.start();
   }
 
-  void _initializeCommands() {
-    // Load todos command
-    loadTodosCommand = Command.createAsyncNoParam(
-      _loadTodos,
-      initialValue: [],
-    );
+  late final todos = B.future(_loadTodos, manualStart: true);
 
-    // Add todo command
-    addTodoCommand = Command.createAsync<TodoInput, void>(
-      _addTodo,
-      initialValue: null,
-    );
+  List<Todo> get todoList => todos.lastData ?? [];
 
-    // Update todo command
-    updateTodoCommand = Command.createAsync<Todo, void>(
-      _updateTodo,
-      initialValue: null,
-    );
-
-    // Delete todo command
-    deleteTodoCommand = Command.createAsync<String, void>(
-      _deleteTodo,
-      initialValue: null,
-    );
-
-    // Toggle todo completion command
-    toggleTodoCommand = Command.createAsync<String, void>(
-      _toggleTodo,
-      initialValue: null,
-    );
-
-    // Clear completed todos command
-    clearCompletedCommand = Command.createAsyncNoParam(
-      _clearCompleted,
-      initialValue: null,
-    );
-
-    // Auto-load todos on initialization
-    loadTodosCommand();
-  }
-
-  /// Load all todos from storage
   Future<List<Todo>> _loadTodos() async {
     final dtos = await _storageService.getAllTodos();
     final loadedTodos = dtos.map((dto) => Todo.fromDTO(dto)).toList();
@@ -80,47 +33,64 @@ class TodoManager {
     // Sort by created date (newest first)
     loadedTodos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    todos.value = loadedTodos;
     return loadedTodos;
   }
 
   /// Add a new todo
-  Future<void> _addTodo(TodoInput input) async {
-    if (input.title.trim().isEmpty) {
-      throw ValidationException('Title cannot be empty');
-    }
+  Future<void> addTodo(TodoInput input) async {
+    await todos.updateWith(() async {
+      if (input.title.trim().isEmpty) {
+        throw ValidationException('Title cannot be empty');
+      }
 
-    final now = DateTime.now();
-    final newTodo = Todo(
-      id: _uuid.v4(),
-      title: input.title.trim(),
-      description: input.description.trim(),
-      isCompleted: false,
-      createdAt: now,
-    );
+      final now = DateTime.now();
+      final newTodo = Todo(
+        id: _uuid.v4(),
+        title: input.title.trim(),
+        description: input.description.trim(),
+        isCompleted: false,
+        createdAt: now,
+      );
 
-    await _storageService.saveTodo(newTodo.toDTO());
-    loadTodosCommand();
+      await _storageService.saveTodo(newTodo.toDTO());
+
+      return [newTodo, ...todoList];
+    });
   }
 
-  /// Update an existing todo
-  Future<void> _updateTodo(Todo todo) async {
-    if (todo.title.trim().isEmpty) {
-      throw ValidationException('Title cannot be empty');
-    }
+  Future<void> updateTodo(Todo todo) async {
+    await todos.updateWith(() async {
+      if (todo.title.trim().isEmpty) {
+        throw ValidationException('Title cannot be empty');
+      }
 
-    final updatedTodo = todo.copyWith(
-      updatedAt: DateTime.now(),
-    );
+      final updatedTodo = todo.copyWith(updatedAt: DateTime.now());
 
-    await _storageService.updateTodo(updatedTodo.toDTO());
-    loadTodosCommand();
+      await _storageService.updateTodo(updatedTodo.toDTO());
+
+      final index = todoList.indexWhere(
+        (existing) => existing.id == updatedTodo.id,
+      );
+
+      if (index == -1) {
+        throw NotFoundException('Todo not found');
+      }
+
+      final updatedTodos = List<Todo>.from(todoList);
+      updatedTodos[index] = updatedTodo;
+
+      return updatedTodos;
+    });
   }
 
-  /// Delete a todo by ID
-  Future<void> _deleteTodo(String id) async {
-    await _storageService.deleteTodo(id);
-    loadTodosCommand();
+  Future<void> deleteTodo(String id) async {
+    await todos.updateWith(() async {
+      await _storageService.deleteTodo(id);
+
+      final updatedTodos = todoList.where((todo) => todo.id != id).toList();
+
+      return updatedTodos;
+    });
 
     // Clear selected todo if it was deleted
     if (selectedTodo.value?.id == id) {
@@ -128,59 +98,65 @@ class TodoManager {
     }
   }
 
-  /// Toggle todo completion status
-  Future<void> _toggleTodo(String id) async {
-    final todo = todos.value.firstWhere(
-      (t) => t.id == id,
-      orElse: () => throw NotFoundException('Todo not found'),
-    );
+  Future<void> toggleTodo(String id) async {
+    await todos.updateWith(() async {
+      final index = todoList.indexWhere((t) => t.id == id);
 
-    final updatedTodo = todo.copyWith(
-      isCompleted: !todo.isCompleted,
-      updatedAt: DateTime.now(),
-    );
+      if (index == -1) {
+        throw NotFoundException('Todo not found');
+      }
 
-    await _storageService.updateTodo(updatedTodo.toDTO());
-    loadTodosCommand();
+      final todo = todoList[index];
+      final updatedTodo = todo.copyWith(
+        isCompleted: !todo.isCompleted,
+        updatedAt: DateTime.now(),
+      );
+
+      await _storageService.updateTodo(updatedTodo.toDTO());
+
+      final updatedTodos = List<Todo>.from(todoList);
+      updatedTodos[index] = updatedTodo;
+
+      return updatedTodos;
+    });
   }
 
-  /// Clear all completed todos
-  Future<void> _clearCompleted() async {
-    final completedTodos = todos.value.where((t) => t.isCompleted);
+  Future<void> clearCompleted() async {
+    await todos.updateWith(() async {
+      final completedTodos = todoList.where((t) => t.isCompleted);
 
-    for (final todo in completedTodos) {
-      await _storageService.deleteTodo(todo.id);
-    }
+      for (final todo in completedTodos) {
+        await _storageService.deleteTodo(todo.id);
+      }
 
-    loadTodosCommand();
+      final remainingTodos = todoList.where((t) => !t.isCompleted).toList();
+
+      return remainingTodos;
+    });
   }
 
-  /// Get filtered todos based on current filter
-  List<Todo> get filteredTodos {
-    switch (currentFilter.value) {
-      case TodoFilter.all:
-        return todos.value;
-      case TodoFilter.active:
-        return todos.value.where((t) => !t.isCompleted).toList();
-      case TodoFilter.completed:
-        return todos.value.where((t) => t.isCompleted).toList();
-    }
-  }
+  late final filteredTodos = B.derived(() {
+    final currentTodos = todos.value.lastData ?? [];
+    return switch (currentFilter.value) {
+      TodoFilter.all => currentTodos,
+      TodoFilter.active => currentTodos.where((t) => !t.isCompleted).toList(),
+      TodoFilter.completed => currentTodos.where((t) => t.isCompleted).toList(),
+    };
+  });
 
-  /// Get count of active todos
-  int get activeTodoCount {
-    return todos.value.where((t) => !t.isCompleted).length;
-  }
+  late final activeCount = B.derived(() {
+    final currentTodos = todos.value.lastData ?? [];
+    return currentTodos.where((t) => !t.isCompleted).length;
+  });
 
-  /// Get count of completed todos
-  int get completedTodoCount {
-    return todos.value.where((t) => t.isCompleted).length;
-  }
+  late final completedCount = B.derived(() {
+    final currentTodos = todos.value.lastData ?? [];
+    return currentTodos.where((t) => t.isCompleted).length;
+  });
 
-  /// Check if there are any completed todos
-  bool get hasCompletedTodos {
-    return completedTodoCount > 0;
-  }
+  late final hasCompleted = B.derived(() {
+    return completedCount.value > 0;
+  });
 
   /// Set the current filter
   void setFilter(TodoFilter filter) {
@@ -196,13 +172,6 @@ class TodoManager {
   void clearSelection() {
     selectedTodo.value = null;
   }
-
-  /// Dispose resources
-  void dispose() {
-    todos.dispose();
-    selectedTodo.dispose();
-    currentFilter.dispose();
-  }
 }
 
 /// Input data for creating a new todo
@@ -210,18 +179,11 @@ class TodoInput {
   final String title;
   final String description;
 
-  const TodoInput({
-    required this.title,
-    this.description = '',
-  });
+  const TodoInput({required this.title, this.description = ''});
 }
 
 /// Filter options for todos
-enum TodoFilter {
-  all,
-  active,
-  completed,
-}
+enum TodoFilter { all, active, completed }
 
 /// Exception for validation errors
 class ValidationException implements Exception {

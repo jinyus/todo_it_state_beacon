@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:state_beacon/state_beacon.dart';
 import 'package:watch_it/watch_it.dart';
 
 import '../managers/todo_manager.dart';
@@ -11,10 +12,7 @@ import '../models/todo.dart';
 class TodoFormView extends WatchingWidget {
   final bool isEditing;
 
-  const TodoFormView({
-    super.key,
-    this.isEditing = false,
-  });
+  const TodoFormView({super.key, this.isEditing = false});
 
   @override
   Widget build(BuildContext context) {
@@ -23,31 +21,10 @@ class TodoFormView extends WatchingWidget {
     final colorScheme = theme.colorScheme;
 
     // Watch command execution state
-    final isExecuting = isEditing
-        ? watch(manager.updateTodoCommand.isExecuting).value
-        : watch(manager.addTodoCommand.isExecuting).value;
+    final isExecuting = manager.todos.watch(context).isLoading;
 
     // Get selected todo for editing
-    final selectedTodo = isEditing
-        ? watch(manager.selectedTodo).value
-        : null;
-
-    // Register error handler
-    registerHandler(
-      select: (TodoManager m) => isEditing
-          ? m.updateTodoCommand.errors
-          : m.addTodoCommand.errors,
-      handler: (context, error, cancel) {
-        if (error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: ${error.error}'),
-              backgroundColor: colorScheme.error,
-            ),
-          );
-        }
-      },
-    );
+    final selectedTodo = isEditing ? manager.selectedTodo.watch(context) : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -59,13 +36,8 @@ class TodoFormView extends WatchingWidget {
         isEditing: isEditing,
         initialTodo: selectedTodo,
         isExecuting: isExecuting,
-        onSave: (title, description) => _saveTodo(
-          context,
-          manager,
-          title,
-          description,
-          selectedTodo,
-        ),
+        onSave: (title, description) =>
+            _saveTodo(context, manager, title, description, selectedTodo),
       ),
     );
   }
@@ -83,13 +55,10 @@ class TodoFormView extends WatchingWidget {
         title: title,
         description: description,
       );
-      manager.updateTodoCommand(updatedTodo);
+      manager.updateTodo(updatedTodo);
     } else {
       // Create new todo
-      manager.addTodoCommand(TodoInput(
-        title: title,
-        description: description,
-      ));
+      manager.addTodo(TodoInput(title: title, description: description));
     }
 
     // Navigate back after a short delay to allow command to complete
@@ -220,9 +189,7 @@ class _TodoFormState extends State<_TodoForm> {
 
           // Cancel button
           OutlinedButton.icon(
-            onPressed: widget.isExecuting
-                ? null
-                : () => Navigator.pop(context),
+            onPressed: widget.isExecuting ? null : () => Navigator.pop(context),
             icon: const Icon(Icons.close),
             label: const Text('Cancel'),
             style: OutlinedButton.styleFrom(
@@ -258,10 +225,7 @@ class _TodoFormState extends State<_TodoForm> {
 
   void _handleSubmit() {
     if (_formKey.currentState!.validate()) {
-      widget.onSave(
-        _titleController.text,
-        _descriptionController.text,
-      );
+      widget.onSave(_titleController.text, _descriptionController.text);
     }
   }
 
@@ -292,11 +256,7 @@ class _MetadataCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 20,
-              color: colorScheme.primary,
-            ),
+            Icon(icon, size: 20, color: colorScheme.primary),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -308,10 +268,7 @@ class _MetadataCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: theme.textTheme.bodyMedium,
-                ),
+                Text(value, style: theme.textTheme.bodyMedium),
               ],
             ),
           ],
