@@ -149,7 +149,7 @@ class TodoManager with BeaconController {
 
   late final completedCount = B.derived(() {
     final currentTodos = todos.value.lastData?.values.toList() ?? [];
-    return currentTodos.where((t) => t.isCompleted).length;
+    return currentTodos.length - activeCount.value;
   });
 
   late final hasCompleted = B.derived(() {
