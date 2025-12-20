@@ -26,6 +26,9 @@ void main() async {
   // Initialize storage service
   await di<HiveStorageService>().init();
 
+  BeaconObserver.useLogging(
+    includeNames: ['isLoadingTooLong', 'isLoadingDerived'],
+  );
   // Run the app
   runApp(const MyApp());
 }
@@ -35,20 +38,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final manager = di<TodoManager>();
-
-    manager.todos.observe(context, (prev, next) {
-      final theme = Theme.of(context);
-      final colorScheme = theme.colorScheme;
-      if (next case AsyncError state) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${state.error}'),
-            backgroundColor: colorScheme.error,
-          ),
-        );
-      }
-    });
     return MaterialApp(
       title: 'TodoIt',
       debugShowCheckedModeBanner: false,
@@ -67,7 +56,25 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       themeMode: ThemeMode.system,
-      home: const TodoListView(),
+      home: Builder(
+        builder: (context) {
+          final manager = di<TodoManager>();
+
+          manager.todos.observe(context, (prev, next) {
+            final theme = Theme.of(context);
+            final colorScheme = theme.colorScheme;
+            if (next case AsyncError state) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error: ${state.error}'),
+                  backgroundColor: colorScheme.error,
+                ),
+              );
+            }
+          });
+          return const TodoListView();
+        },
+      ),
       routes: {
         '/add': (context) => const TodoFormView(isEditing: false),
         '/edit': (context) => const TodoFormView(isEditing: true),
