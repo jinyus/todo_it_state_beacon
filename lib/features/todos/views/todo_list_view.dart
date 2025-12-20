@@ -3,22 +3,20 @@ import 'package:state_beacon/state_beacon.dart';
 import 'package:todoit/features/todos/views/widgets/action_buttons.dart';
 import 'package:todoit/features/todos/views/widgets/empty_state.dart';
 import 'package:todoit/features/todos/views/widgets/filter_tabs.dart';
-import 'package:watch_it/watch_it.dart';
+import 'package:todoit/locator.dart';
 
-import '../managers/todo_manager.dart';
-import '../models/todo.dart';
 import 'widgets/todo_item.dart';
 
 /// Main view for displaying the list of todos
 ///
 /// This view uses WatchingWidget to reactively update when todos change.
 /// It provides filtering options and supports adding, editing, and deleting todos.
-class TodoListView extends WatchingWidget {
+class TodoListView extends StatelessWidget {
   const TodoListView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final manager = di<TodoManager>();
+    final manager = todoManagerRef.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -64,7 +62,7 @@ class TodoList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final manager = di<TodoManager>();
+    final manager = todoManagerRef.of(context);
     final filteredTodos = manager.filteredTodos.watch(context);
 
     return RefreshIndicator(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:state_beacon/state_beacon.dart';
 import 'package:todoit/features/todos/managers/todo_manager.dart';
-import 'package:watch_it/watch_it.dart';
+import 'package:todoit/locator.dart';
 
 class SettingsButton extends StatelessWidget {
   const SettingsButton({super.key});
@@ -26,7 +26,7 @@ class ClearCompletedButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final manager = di<TodoManager>();
+    final manager = todoManagerRef.of(context);
     final hasCompletedTodos = manager.hasCompleted.watch(context);
 
     if (!hasCompletedTodos) {

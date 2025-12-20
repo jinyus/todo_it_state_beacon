@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:state_beacon/state_beacon.dart';
 import 'package:todoit/features/todos/managers/todo_manager.dart';
-import 'package:watch_it/watch_it.dart';
+import 'package:todoit/locator.dart';
 
 class FilterTabs extends StatelessWidget {
   const FilterTabs({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final manager = di<TodoManager>();
+    final manager = todoManagerRef.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 

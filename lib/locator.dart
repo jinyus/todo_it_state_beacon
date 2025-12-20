@@ -1,34 +1,28 @@
-import 'package:watch_it/watch_it.dart';
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:state_beacon/state_beacon.dart';
+import 'package:todoit/features/todos/models/todo_dto.dart';
 
 import 'services/storage/hive_storage_service.dart';
 import 'features/todos/managers/todo_manager.dart';
 
-/// Setup dependency injection using get_it
-///
-/// This function registers all services and managers as singletons.
-/// Call this once during app initialization.
-///
-/// Note: watch_it provides the global 'di' instance (GetIt.instance)
-void setupLocator() {
-  // Services Layer
-  // Register storage service as lazy singleton
-  di.registerLazySingleton<HiveStorageService>(
-    () => HiveStorageService(),
-  );
+late final ScopedRef<HiveStorageService>
+hiveStorageServiceRef; // = Ref.scoped((_) => HiveStorageService());
+final todoManagerRef = Ref.scoped(
+  (ctx) => TodoManager(hiveStorageServiceRef.read(ctx)),
+);
 
-  // Managers Layer
-  // Register todo manager with storage service dependency
-  di.registerLazySingleton<TodoManager>(
-    () => TodoManager(di<HiveStorageService>()),
-  );
+Future<void> startUp() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-  // Future managers can be added here:
-  // di.registerLazySingleton<SettingsManager>(() => SettingsManager());
-}
+  // Initialize Hive
+  await Hive.initFlutter();
 
-/// Reset dependency injection (useful for testing)
-///
-/// This clears all registered dependencies and allows re-registration.
-Future<void> resetLocator() async {
-  await di.reset();
+  // Register Hive adapters
+  Hive.registerAdapter(TodoDTOAdapter());
+
+  final hiveService = HiveStorageService();
+  await hiveService.init();
+
+  hiveStorageServiceRef = Ref.scoped((_) => hiveService);
 }

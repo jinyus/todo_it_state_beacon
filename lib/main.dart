@@ -1,36 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:state_beacon/state_beacon.dart';
-import 'package:todoit/features/todos/managers/todo_manager.dart';
 import 'package:todoit/features/todos/views/todo_form_view.dart';
-import 'package:watch_it/watch_it.dart';
 
-import 'features/todos/models/todo_dto.dart';
 import 'features/todos/views/todo_list_view.dart';
 import 'locator.dart';
-import 'services/storage/hive_storage_service.dart';
 
 void main() async {
-  // Ensure Flutter bindings are initialized
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Hive
-  await Hive.initFlutter();
-
-  // Register Hive adapters
-  Hive.registerAdapter(TodoDTOAdapter());
-
-  // Setup dependency injection
-  setupLocator();
-
-  // Initialize storage service
-  await di<HiveStorageService>().init();
-
-  BeaconObserver.useLogging(
-    includeNames: ['isLoadingTooLong', 'isLoadingDerived'],
-  );
+  await startUp();
   // Run the app
-  runApp(const MyApp());
+  runApp(LiteRefScope(child: const MyApp()));
 }
 
 class MyApp extends StatelessWidget {
@@ -58,7 +36,7 @@ class MyApp extends StatelessWidget {
       themeMode: ThemeMode.system,
       home: Builder(
         builder: (context) {
-          final manager = di<TodoManager>();
+          final manager = todoManagerRef.of(context);
 
           manager.todos.observe(context, (prev, next) {
             final theme = Theme.of(context);

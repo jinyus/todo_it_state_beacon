@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:todoit/features/todos/managers/todo_manager.dart';
-import 'package:watch_it/watch_it.dart';
+import 'package:todoit/locator.dart';
 import '../../models/todo.dart';
 
 /// A widget representing a single todo item in the list
@@ -24,7 +24,7 @@ class TodoItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final manager = di<TodoManager>();
+    final manager = todoManagerRef.of(context);
 
     return Dismissible(
       key: Key(todo.id),

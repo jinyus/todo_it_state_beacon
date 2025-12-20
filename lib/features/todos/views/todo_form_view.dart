@@ -1,20 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:state_beacon/state_beacon.dart';
 import 'package:todoit/features/todos/models/todo.dart';
-import 'package:watch_it/watch_it.dart';
-
-import '../managers/todo_manager.dart';
+import 'package:todoit/locator.dart';
 
 /// Form view for adding or editing a todo
 ///
 /// This view handles both creation and editing of todos.
 /// It uses WatchingWidget to react to command execution states.
-class TodoFormView extends WatchingWidget {
+class TodoFormView extends StatelessWidget {
   const TodoFormView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final selectedTodo = di<TodoManager>().selectedTodo.watch(context);
+    final selectedTodo = todoManagerRef.of(context).selectedTodo.watch(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -37,7 +35,8 @@ class _TodoForm extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final manager = di<TodoManager>();
+    final manager = todoManagerRef.of(context);
+    ;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
