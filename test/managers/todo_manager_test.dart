@@ -29,7 +29,7 @@ void main() {
 
     group('Initialization', () {
       test('should initialize with empty todos', () {
-        expect(manager.todoList, isEmpty);
+        expect(manager.todoMap, isEmpty);
       });
 
       test('should set initial filter to all', () {
@@ -60,8 +60,8 @@ void main() {
         manager.todos.reset();
         await manager.todos.next(filter: (state) => !state.isLoading);
 
-        expect(manager.todoList.length, 1);
-        expect(manager.todoList.first.title, 'Test Todo');
+        expect(manager.todoMap.length, 1);
+        expect(manager.todoMap.values.first.title, 'Test Todo');
       });
 
       test('should sort todos by created date descending', () async {
@@ -88,9 +88,9 @@ void main() {
         manager.todos.reset();
         await manager.todos.next(filter: (state) => !state.isLoading);
 
-        expect(manager.todoList.length, 2);
-        expect(manager.todoList.first.title, 'Newer Todo');
-        expect(manager.todoList.last.title, 'Older Todo');
+        expect(manager.todoMap.length, 2);
+        expect(manager.todoMap.values.first.title, 'Newer Todo');
+        expect(manager.todoMap.values.last.title, 'Older Todo');
       });
 
       test('should handle empty storage', () async {
@@ -99,7 +99,7 @@ void main() {
         manager.todos.reset();
         await manager.todos.next(filter: (state) => !state.isLoading);
 
-        expect(manager.todoList, isEmpty);
+        expect(manager.todoMap, isEmpty);
       });
     });
 
