@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:state_beacon/state_beacon.dart';
 import 'package:todoit/features/todos/managers/todo_manager.dart';
+import 'package:todoit/features/todos/views/todo_form_view.dart';
 import 'package:watch_it/watch_it.dart';
 
 import 'features/todos/models/todo_dto.dart';
 import 'features/todos/views/todo_list_view.dart';
-import 'features/todos/views/todo_form_view.dart';
 import 'locator.dart';
 import 'services/storage/hive_storage_service.dart';
 
@@ -76,8 +76,8 @@ class MyApp extends StatelessWidget {
         },
       ),
       routes: {
-        '/add': (context) => const TodoFormView(isEditing: false),
-        '/edit': (context) => const TodoFormView(isEditing: true),
+        '/add': (context) => const TodoFormView(),
+        '/edit': (context) => const TodoFormView(),
       },
     );
   }

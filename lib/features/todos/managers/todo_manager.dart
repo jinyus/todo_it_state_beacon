@@ -16,14 +16,26 @@ class TodoManager with BeaconController {
   final HiveStorageService _storageService;
   final Uuid _uuid = const Uuid();
 
-  late final selectedTodo = B.writable<Todo?>(null);
-  late final currentFilter = B.writable<TodoFilter>(TodoFilter.all);
-
   TodoManager(this._storageService) {
     todos.start();
+
+    selectedTodo.subscribe((todo) {
+      titleField.text = todo?.title ?? '';
+      descriptionField.text = todo?.description ?? '';
+    }, startNow: false);
   }
 
+  late final selectedTodo = B.writable<Todo?>(null);
+  late final currentFilter = B.writable<TodoFilter>(TodoFilter.all);
   late final todos = B.future(_loadTodos, manualStart: true);
+
+  /// FORM FIELDS
+  late final titleField = B.textEditing();
+  late final descriptionField = B.textEditing();
+  late final titleFieldValid = B.derived(() {
+    final title = titleField.value.text;
+    return title.trim().isEmpty ? 'Title is required' : null;
+  });
 
   LinkedHashMap<String, Todo> get todoMap =>
       todos.lastData ?? LinkedHashMap<String, Todo>();
@@ -156,6 +168,22 @@ class TodoManager with BeaconController {
     return completedCount.value > 0;
   });
 
+  Future<void> submitForm() {
+    final selected = selectedTodo.peek();
+    final (title, description) = (titleField.text, descriptionField.text);
+
+    if (selected == null) {
+      return addTodo(TodoInput(title: title, description: description));
+    }
+
+    final updatedTodo = selected.copyWith(
+      title: title,
+      description: description,
+    );
+
+    return updateTodo(updatedTodo);
+  }
+
   /// Set the current filter
   void setFilter(TodoFilter filter) {
     currentFilter.value = filter;
@@ -169,6 +197,8 @@ class TodoManager with BeaconController {
   /// Clear the selected todo
   void clearSelection() {
     selectedTodo.value = null;
+    titleField.clear();
+    descriptionField.clear();
   }
 }
 

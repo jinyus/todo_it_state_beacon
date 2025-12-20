@@ -1,18 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:state_beacon/state_beacon.dart';
+import 'package:todoit/features/todos/models/todo.dart';
 import 'package:watch_it/watch_it.dart';
 
 import '../managers/todo_manager.dart';
-import '../models/todo.dart';
 
 /// Form view for adding or editing a todo
 ///
 /// This view handles both creation and editing of todos.
 /// It uses WatchingWidget to react to command execution states.
 class TodoFormView extends WatchingWidget {
-  final bool isEditing;
+  const TodoFormView({super.key});
 
-  const TodoFormView({super.key, this.isEditing = false});
+  @override
+  Widget build(BuildContext context) {
+    final selectedTodo = di<TodoManager>().selectedTodo.watch(context);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(selectedTodo == null ? 'New Todo' : 'Edit Todo'),
+        backgroundColor: colorScheme.primaryContainer,
+        foregroundColor: colorScheme.onPrimaryContainer,
+      ),
+      body: _TodoForm(selectedTodo),
+    );
+  }
+}
+
+/// Internal form widget with state
+class _TodoForm extends StatelessWidget {
+  const _TodoForm(this.selectedTodo);
+
+  final Todo? selectedTodo;
 
   @override
   Widget build(BuildContext context) {
@@ -20,213 +41,121 @@ class TodoFormView extends WatchingWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Watch command execution state
-    final isExecuting = manager.todos.watch(context).isLoading;
+    final isEditing = selectedTodo != null;
+    final isLoading = manager.todos.watch(context).isLoading;
+    final titleFieldError = manager.titleFieldValid.watch(context);
 
-    // Get selected todo for editing
-    final selectedTodo = isEditing ? manager.selectedTodo.watch(context) : null;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(isEditing ? 'Edit Todo' : 'New Todo'),
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
-      ),
-      body: _TodoForm(
-        isEditing: isEditing,
-        initialTodo: selectedTodo,
-        isExecuting: isExecuting,
-        onSave: (title, description) =>
-            _saveTodo(context, manager, title, description, selectedTodo),
-      ),
-    );
-  }
-
-  void _saveTodo(
-    BuildContext context,
-    TodoManager manager,
-    String title,
-    String description,
-    Todo? existingTodo,
-  ) {
-    if (isEditing && existingTodo != null) {
-      // Update existing todo
-      final updatedTodo = existingTodo.copyWith(
-        title: title,
-        description: description,
-      );
-      manager.updateTodo(updatedTodo);
-    } else {
-      // Create new todo
-      manager.addTodo(TodoInput(title: title, description: description));
-    }
-
-    // Navigate back after a short delay to allow command to complete
-    Future.delayed(const Duration(milliseconds: 300), () {
+    Future<void> submitForm() async {
+      if (titleFieldError != null) return;
+      await manager.submitForm();
       if (context.mounted) {
         Navigator.pop(context);
       }
-    });
-  }
-}
+    }
 
-/// Internal form widget with state
-class _TodoForm extends StatefulWidget {
-  final bool isEditing;
-  final Todo? initialTodo;
-  final bool isExecuting;
-  final void Function(String title, String description) onSave;
-
-  const _TodoForm({
-    required this.isEditing,
-    required this.initialTodo,
-    required this.isExecuting,
-    required this.onSave,
-  });
-
-  @override
-  State<_TodoForm> createState() => _TodoFormState();
-}
-
-class _TodoFormState extends State<_TodoForm> {
-  final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _titleController;
-  late final TextEditingController _descriptionController;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(
-      text: widget.initialTodo?.title ?? '',
-    );
-    _descriptionController = TextEditingController(
-      text: widget.initialTodo?.description ?? '',
-    );
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Form(
-      key: _formKey,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // Title field
-          TextFormField(
-            controller: _titleController,
-            decoration: InputDecoration(
-              labelText: 'Title',
-              hintText: 'Enter todo title',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(Icons.title),
-              filled: true,
-              fillColor: colorScheme.surfaceContainerHighest,
-            ),
-            textInputAction: TextInputAction.next,
-            autofocus: !widget.isEditing,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Title is required';
-              }
-              return null;
-            },
-            enabled: !widget.isExecuting,
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Title field
+        TextFormField(
+          forceErrorText: titleFieldError,
+          controller: manager.titleField.controller,
+          decoration: InputDecoration(
+            labelText: 'Title',
+            hintText: 'Enter todo title',
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.title),
+            filled: true,
+            fillColor: colorScheme.surfaceContainerHighest,
           ),
+          textInputAction: TextInputAction.next,
+          autofocus: true,
+          validator: (value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Title is required';
+            }
+            return null;
+          },
+          enabled: !isLoading,
+        ),
 
+        const SizedBox(height: 16),
+
+        // Description field
+        TextFormField(
+          controller: manager.descriptionField.controller,
+          decoration: InputDecoration(
+            labelText: 'Description (optional)',
+            hintText: 'Enter todo description',
+            border: const OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.notes),
+            filled: true,
+            fillColor: colorScheme.surfaceContainerHighest,
+            alignLabelWithHint: true,
+          ),
+          textInputAction: TextInputAction.done,
+          maxLines: 5,
+          minLines: 3,
+          enabled: !isLoading,
+          onFieldSubmitted: (_) => submitForm(),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Save button
+        FilledButton.icon(
+          onPressed: isLoading ? null : submitForm,
+          icon: isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check),
+          label: Text(isEditing ? 'Update' : 'Create'),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Cancel button
+        OutlinedButton.icon(
+          onPressed: isLoading ? null : () => Navigator.pop(context),
+          icon: const Icon(Icons.close),
+          label: const Text('Cancel'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+        ),
+
+        if (isEditing) ...[
+          const SizedBox(height: 32),
+          const Divider(),
           const SizedBox(height: 16),
 
-          // Description field
-          TextFormField(
-            controller: _descriptionController,
-            decoration: InputDecoration(
-              labelText: 'Description (optional)',
-              hintText: 'Enter todo description',
-              border: const OutlineInputBorder(),
-              prefixIcon: const Icon(Icons.notes),
-              filled: true,
-              fillColor: colorScheme.surfaceContainerHighest,
-              alignLabelWithHint: true,
-            ),
-            textInputAction: TextInputAction.done,
-            maxLines: 5,
-            minLines: 3,
-            enabled: !widget.isExecuting,
-            onFieldSubmitted: (_) => _handleSubmit(),
+          // Metadata
+          _MetadataCard(
+            title: 'Created',
+            value: _formatDate(selectedTodo!.createdAt),
+            icon: Icons.calendar_today,
           ),
 
-          const SizedBox(height: 24),
-
-          // Save button
-          FilledButton.icon(
-            onPressed: widget.isExecuting ? null : _handleSubmit,
-            icon: widget.isExecuting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.check),
-            label: Text(widget.isEditing ? 'Update' : 'Create'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Cancel button
-          OutlinedButton.icon(
-            onPressed: widget.isExecuting ? null : () => Navigator.pop(context),
-            icon: const Icon(Icons.close),
-            label: const Text('Cancel'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-          ),
-
-          if (widget.isEditing && widget.initialTodo != null) ...[
-            const SizedBox(height: 32),
-            const Divider(),
-            const SizedBox(height: 16),
-
-            // Metadata
+          if (selectedTodo!.updatedAt != null) ...[
+            const SizedBox(height: 8),
             _MetadataCard(
-              title: 'Created',
-              value: _formatDate(widget.initialTodo!.createdAt),
-              icon: Icons.calendar_today,
+              title: 'Last Updated',
+              value: _formatDate(selectedTodo!.updatedAt!),
+              icon: Icons.update,
             ),
-
-            if (widget.initialTodo!.updatedAt != null) ...[
-              const SizedBox(height: 8),
-              _MetadataCard(
-                title: 'Last Updated',
-                value: _formatDate(widget.initialTodo!.updatedAt!),
-                icon: Icons.update,
-              ),
-            ],
           ],
         ],
-      ),
+      ],
     );
-  }
-
-  void _handleSubmit() {
-    if (_formKey.currentState!.validate()) {
-      widget.onSave(_titleController.text, _descriptionController.text);
-    }
   }
 
   String _formatDate(DateTime date) {

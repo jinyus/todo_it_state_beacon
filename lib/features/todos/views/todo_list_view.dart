@@ -48,7 +48,10 @@ class TodoListView extends WatchingWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.pushNamed(context, '/add'),
+        onPressed: () async {
+          await Navigator.pushNamed(context, '/add');
+          manager.clearSelection();
+        },
         icon: const Icon(Icons.add),
         label: const Text('Add Todo'),
       ),
@@ -76,16 +79,15 @@ class TodoList extends StatelessWidget {
           final todo = filteredTodos[index];
           return TodoItem(
             todo: todo,
-            onTap: () => _navigateToEditTodo(context, todo),
+            onTap: () async {
+              manager.selectTodo(todo);
+              await Navigator.pushNamed(context, '/edit');
+              manager.clearSelection();
+            },
             onToggle: () => manager.toggleTodo(todo.id),
           );
         },
       ),
     );
-  }
-
-  void _navigateToEditTodo(BuildContext context, Todo todo) {
-    di<TodoManager>().selectTodo(todo);
-    Navigator.pushNamed(context, '/edit');
   }
 }
